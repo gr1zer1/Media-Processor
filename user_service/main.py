@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from core import db_helper
+from core.db import db_helper
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware

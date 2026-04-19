@@ -77,14 +77,13 @@ async def get_current_user(
 
 @router.post(
             "/register",
-            response_model=UserResponseSchema,
             dependencies=[Depends(RateLimiter(times=20, seconds=60))],
             )
 async def register(
     response: Response,
     user: UserSchema,
     session: SessionDep,
-) -> UserResponseSchema:
+):
     stmt = select(UserModel).where(UserModel.email == user.email)
     existing_user_result = await session.execute(stmt)
 
