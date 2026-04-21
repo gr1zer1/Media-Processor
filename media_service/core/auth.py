@@ -10,7 +10,7 @@ def decode_token(token: str) -> JWTSchema:
         payload = jwt.decode(
             token=token, key=config.jwt_secret_key, algorithms=[config.jwt_algorithm]
         )
-        return JWTSchema(**payload))
+        return JWTSchema(**payload)
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Token!"
