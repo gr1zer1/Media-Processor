@@ -9,5 +9,7 @@ class UserModel(Base, TimestampMixin):
     password: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50), default="user")
     token_version: Mapped[int] = mapped_column(default=0)
+    quota_used: Mapped[int] = mapped_column(default=0)
+    quota_limit: Mapped[int] = mapped_column(default=1_073_741_824)
     
 

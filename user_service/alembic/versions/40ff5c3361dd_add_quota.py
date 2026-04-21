@@ -1,8 +1,8 @@
-"""init tables
+"""add quota
 
-Revision ID: 5cf78aafb5c7
+Revision ID: 40ff5c3361dd
 Revises: 
-Create Date: 2026-04-18 10:47:33.610875
+Create Date: 2026-04-21 16:31:48.957747
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '5cf78aafb5c7'
+revision: str = '40ff5c3361dd'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -24,9 +24,13 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('password', sa.String(length=255), nullable=False),
+    sa.Column('role', sa.String(length=50), nullable=False),
+    sa.Column('token_version', sa.Integer(), nullable=False),
+    sa.Column('quota_used', sa.Integer(), nullable=False),
+    sa.Column('quota_limit', sa.Integer(), nullable=False),
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)

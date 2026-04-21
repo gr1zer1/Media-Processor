@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, EmailStr,Field, model_validator
-
+from datetime import datetime
 
 class UserSchema(BaseModel):
     email: EmailStr
@@ -13,6 +13,10 @@ class UserResponseSchema(BaseModel):
     id: int
     email: str
     role: str
+    quota_used: int
+    quota_limit: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class ChangePasswordRequestSchema(BaseModel):
