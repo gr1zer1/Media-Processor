@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from typing import AsyncGenerator
 from .config import config
+from minio import Minio
 
 class DBHelper:
 
@@ -25,6 +26,12 @@ class DBHelper:
             autocommit=False,
         )
 
+        self.minio_client = Minio(
+            config.minio_url,
+            access_key="admin",
+            secret_key="password",
+            secure=False,
+        )
     async def get_session(self) -> AsyncGenerator[AsyncSession, None, None]:
         async with self.session_factory() as session:
             yield session

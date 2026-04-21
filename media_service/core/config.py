@@ -10,10 +10,15 @@ class Settings(BaseSettings):
     redis_url:str = Field(default="redis://media_redis:6379", validation_alias="MEDIA_REDIS_URL")
     echo_sql: bool = Field(default=False, validation_alias="ECHO_SQL")
 
+    bucket_name: str = Field(default="media-processor-bucket", validation_alias="BUCKET_NAME")
+
+    minio_url: str = Field(default="minio:9000", validation_alias="MINIO_URL")
+
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent.parent / ".env"),
         extra="ignore"
     )
+        
 
 
 config = Settings()
