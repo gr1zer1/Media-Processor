@@ -3,6 +3,9 @@ from sqlalchemy import DateTime, String,Integer,ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column,relationship
 from .media_file import MediaFileModel
 from datetime import datetime,timezone
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .media_file import MediaFileModel
 
 
 class ProcessingTaskModel(Base):
@@ -11,3 +14,4 @@ class ProcessingTaskModel(Base):
     error_message:Mapped[str] = mapped_column(String(255), nullable=True)
     started_at:Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at:Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    file:Mapped["MediaFileModel"] = mapped_column(relationship("MediaFileModel", back_populates="processing_task"))
