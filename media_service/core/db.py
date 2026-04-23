@@ -28,11 +28,11 @@ class DBHelper:
 
         self.minio_client = Minio(
             config.minio_url,
-            access_key="admin",
-            secret_key="password",
+            access_key=config.minio_access_key,
+            secret_key=config.minio_secret_key,
             secure=False,
         )
-    async def get_session(self) -> AsyncGenerator[AsyncSession, None, None]:
+    async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
         async with self.session_factory() as session:
             yield session
     

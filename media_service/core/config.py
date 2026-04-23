@@ -1,5 +1,5 @@
-from pydantic import BaseSettings,Field
-from pydantic_settings import SettingsConfigDict
+from pydantic import Field
+from pydantic_settings import SettingsConfigDict,BaseSettings
 from pathlib import Path
 
 
@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     bucket_name: str = Field(default="media-processor-bucket", validation_alias="BUCKET_NAME")
 
     minio_url: str = Field(default="minio:9000", validation_alias="MINIO_URL")
+
+    minio_secret_key: str = Field(default="password", validation_alias="MINIO_SECRET_KEY")
+    minio_access_key: str = Field(default="admin", validation_alias="MINIO_ACCESS_KEY")
 
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent.parent / ".env"),
