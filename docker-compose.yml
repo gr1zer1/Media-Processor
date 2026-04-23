@@ -138,6 +138,15 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+  celery_worker:
+    build: ./user_service/.
+    command: celery -A app.celery_app worker --loglevel=info
+    env_file: .env
+    depends_on:
+      media_redis:
+        condition: service_healthy
+    networks:
+      - b_network
 
 networks:
   b_network:

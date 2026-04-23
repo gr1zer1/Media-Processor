@@ -1,4 +1,4 @@
-from fastapi import APIRouter,UploadFile,Depends
+from fastapi import APIRouter, HTTPException,UploadFile,Depends
 from fastapi.responses import StreamingResponse
 
 from core.auth import current_user
@@ -45,7 +45,7 @@ async def private_stream_file(
     media_version = file_result.scalar_one_or_none()
 
     if not media_version:
-        return {"error": "File not found or access denied"}
+        raise HTTPException(status_code=404, detail="File not found")
 
     response = db_helper.minio_client.get_object(config.bucket_name, media_version.minio_key)
 
@@ -78,8 +78,7 @@ async def public_stream_file(
     media_version = file_result.scalar_one_or_none()
 
     if not media_version:
-        return {"error": "File not found or access denied"}
-
+        raise HTTPException(status_code=404, detail="File not found")
     response = db_helper.minio_client.get_object(config.bucket_name, media_version.minio_key)
 
 
@@ -161,8 +160,12 @@ async def check_status(
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
 
-    if not task or task.file.user_id != user.sub:
-        return {"error": "Task not found or access denied"}
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    elif task.file.user_id != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied")
+
 
     return UploadResponseSchema.model_validate(task)
 
@@ -188,7 +191,8 @@ async def get_private_file(
     ) -> StreamingResponse:
     return await private_stream_file(file_name, version_type, user, session)
 
-
+"""TODO: Fix bag with access control for public files. Currently anyone can access any file if they know the name.
+We need to add some kind of token or signature to the URL to ensure that only authorized users can access the file."""
 @router.get("/files/public/{file_name}",response_model=StreamingResponse)
 async def get_public_file(
     file_name:str,
@@ -203,7 +207,7 @@ async def get_file_by_id(
     file_id:int,
     session:SessionDep,
     user:JWTSchema = Depends(current_user),
-    ) -> StreamingResponse:
+    ):
     stmt = (select(MediaFileModel)
             .where(MediaFileModel.id == file_id)
             .options(selectinload(MediaFileModel.media_versions))
@@ -211,8 +215,13 @@ async def get_file_by_id(
     result = await session.execute(stmt)
     file = result.scalar_one_or_none()
 
-    if not file or file.user_id != user.sub:
-        return {"error": "File not found or access denied"}
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    elif file.user_id != user.sub:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    
 
     return {
         "media_file":file,
