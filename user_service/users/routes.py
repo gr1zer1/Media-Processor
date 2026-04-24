@@ -27,20 +27,24 @@ router = APIRouter(tags=["Users"])
 
 
 async def get_current_user(
-    session: SessionDep, authorization: str | None = Header(default=None)
+    session: SessionDep,
+    authorization: str | None = Header(default=None),
+    authorization_query: str | None = Query(default=None),
 ) -> UserModel:
-    if not authorization:
+    if not authorization and not authorization_query:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing Authorization header",
         )
-
-    scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization scheme",
-        )
+    if not authorization_query:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization scheme",
+            )
+    else:
+        token = authorization_query
 
     payload = decode_token(token)
     user_id = payload.get("sub")
@@ -326,3 +330,31 @@ async def change_password(
         "token_type": "bearer",
         "detail": "Password changed successfully"
     }
+
+
+@router.patch("/users/{quote}",response_model=UserResponseSchema)
+async def update_user_quota(
+    quote: int,
+    session: SessionDep,
+    user_id:int|None = Query(default=None),
+) -> UserResponseSchema:
+    stmt = (
+        update(UserModel)
+        .where(UserModel.id == user_id)
+        .values(quota_limit=UserModel.quota_limit + quote)
+        .returning(UserModel)
+    )
+    result = await session.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    await session.commit()
+
+    return UserResponseSchema.model_validate(user)
+
+
+@router.get("/users/by-jwt",response_model=UserResponseSchema)
+async def get_user_by_jwt(
+    session: SessionDep,
+    current_user: UserModel = Depends(get_current_user),
+):
+    return UserResponseSchema.model_validate(current_user)

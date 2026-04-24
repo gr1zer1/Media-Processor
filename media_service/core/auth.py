@@ -33,3 +33,20 @@ def current_user(authorization: str | None = Header(default=None)) -> JWTSchema:
         )
 
     return decode_token(token)
+
+
+def get_token_from_header(authorization: str | None = Header(default=None)) -> str:
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header",
+        )
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization scheme",
+        )
+
+    return token

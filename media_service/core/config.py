@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     minio_secret_key: str = Field(default="password", validation_alias="MINIO_SECRET_KEY")
     minio_access_key: str = Field(default="admin", validation_alias="MINIO_ACCESS_KEY")
 
+    user_service_url: str = Field(default="http://user_service:8001", validation_alias="USER_SERVICE_URL")
+
     model_config = SettingsConfigDict(
         env_file=str(Path(__file__).parent.parent / ".env"),
         extra="ignore"

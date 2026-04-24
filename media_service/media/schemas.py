@@ -25,4 +25,16 @@ class MediaFileSchema(BaseModel):
     user_id:int
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    role: str
+    quota_used: int
+    quota_limit: int
+    created_at: datetime
+    updated_at: datetime
     

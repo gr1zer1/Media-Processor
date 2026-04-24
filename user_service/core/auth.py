@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import uuid
 
+from users.routes import get_current_user
 from fastapi import Depends, HTTPException, status
 from jose import JWTError, jwt
 
@@ -60,7 +61,6 @@ def decode_token(token: str) -> dict:
 
 
 def require_role(*roles: str) -> callable:
-    from users.routes import get_current_user
 
     async def dependency(
         current_user: UserModel = Depends(get_current_user),

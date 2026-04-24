@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException,UploadFile,Depends
 from fastapi.responses import StreamingResponse
 
-from core.auth import current_user
+from core.auth import current_user, get_token_from_header
 from core import MediaFileModel,MediaVersionModel,ProcessingTaskModel
-from .schemas import JWTSchema,UploadResponseSchema,MediaFileSchema
+from .schemas import JWTSchema,UploadResponseSchema,MediaFileSchema,UserSchema
 from core import config
 from core.db import db_helper
 
@@ -16,6 +16,9 @@ from sqlalchemy.orm import selectinload
 import uuid
 
 from .media import media_processing
+
+import aiohttp
+import asyncio
 
 SessionDep = Annotated[AsyncSession, Depends(db_helper.get_session)]
 
@@ -95,8 +98,14 @@ async def public_stream_file(
 async def upload(
     file: UploadFile,
     session:SessionDep,
-    user:JWTSchema = Depends(current_user),
+    user_token: str = Depends(get_token_from_header)
     ):
+    async with aiohttp.ClientSession() as http_session:
+        async with http_session.get(config.user_service_url + "/users/by-jwt", headers={"Authorization": f"Bearer {user_token}"}) as resp:
+            if resp.status != 200:
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            user_data = await resp.json()
+    user = UserSchema.model_validate(user_data)
 
     new_file_name = str(uuid.uuid4())
 
@@ -108,6 +117,8 @@ async def upload(
         length=-1,
         part_size=10 * 1024 * 1024,
     )
+
+    length = file.size
     
 
 
@@ -115,7 +126,7 @@ async def upload(
         original_filename=file.filename,
         filetype=file.content_type,
         filesize=file.size,
-        user_id=user.sub,
+        user_id=user.id,
     )
 
     original_version = MediaVersionModel(
@@ -145,6 +156,11 @@ async def upload(
     await session.refresh(processing_task)
 
     media_processing.delay(minio_key, media_file.id, file.content_type, new_file_name)
+
+    async with aiohttp.ClientSession() as http_session:
+        
+        await http_session.patch(
+            config.user_service_url + f"/users/{length}/?user_id={user.id}",)
     
     return UploadResponseSchema.model_validate(processing_task)
 
@@ -207,7 +223,7 @@ async def get_file_by_id(
     file_id:int,
     session:SessionDep,
     user:JWTSchema = Depends(current_user),
-    ):
+    ) -> dict:
     stmt = (select(MediaFileModel)
             .where(MediaFileModel.id == file_id)
             .options(selectinload(MediaFileModel.media_versions))
