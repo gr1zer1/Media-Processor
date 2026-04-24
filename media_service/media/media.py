@@ -16,6 +16,8 @@ from core.config import config
 from core import MediaVersionModel
 from core.models.processing_task import ProcessingTaskModel
 
+from sqlalchemy import create_engine
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +27,10 @@ app = Celery(
     backend=f"{config.redis_url}/0",
 )
 
+engine = create_engine(config.db_url.replace("asyncpg", "psycopg2"))
+
 Session = sessionmaker(
-    bind=db_helper.engine,
+    bind=engine,
     expire_on_commit=False,
     autoflush=False,
     autocommit=False,
@@ -103,7 +107,7 @@ def process_image(src_path: str, media_file_id: int, new_file_name: str) -> list
 
     versions.append(MediaVersionModel(
         file_id=media_file_id,
-        version="thumbnail",
+        version_type="thumbnail",
         url=make_url(thumbnail_object),
         minio_key=thumbnail_object,
     ))
@@ -123,7 +127,7 @@ def process_image(src_path: str, media_file_id: int, new_file_name: str) -> list
 
     versions.append(MediaVersionModel(
         file_id=media_file_id,
-        version="medium",
+        version_type="medium",
         url=make_url(medium_object),
         minio_key=medium_object,
     ))
@@ -158,7 +162,7 @@ def process_video(src_path: str, media_file_id: int, new_file_name: str, content
 
         versions.append(MediaVersionModel(
             file_id=media_file_id,
-            version="converted",
+            version_type="converted",
             url=make_url(converted_object),
             minio_key=converted_object,
         ))
@@ -184,7 +188,7 @@ def process_video(src_path: str, media_file_id: int, new_file_name: str, content
 
             versions.append(MediaVersionModel(
                 file_id=media_file_id,
-                version="preview",
+                version_type="preview",
                 url=make_url(preview_object),
                 minio_key=preview_object,
             ))

@@ -42,7 +42,7 @@ async def private_stream_file(
         return {"error": "File not found or access denied"}
     
     file_stmt = (select(MediaVersionModel)
-                 .where(MediaVersionModel.file_id == file.id and MediaVersionModel.version_type == version_type)
+                 .where(MediaVersionModel.file_id == file.id, MediaVersionModel.version_type == version_type)
     )
     file_result = await session.execute(file_stmt)
     media_version = file_result.scalar_one_or_none()
@@ -75,7 +75,7 @@ async def public_stream_file(
 
     
     file_stmt = (select(MediaVersionModel)
-                 .where(MediaVersionModel.file_id == file.id and MediaVersionModel.version_type == version_type)
+                 .where(MediaVersionModel.file_id == file.id,MediaVersionModel.version_type == version_type)
     )
     file_result = await session.execute(file_stmt)
     media_version = file_result.scalar_one_or_none()
@@ -129,17 +129,18 @@ async def upload(
         user_id=user.id,
     )
 
+    session.add(media_file)
+    await session.commit()
+    await session.refresh(media_file)
+    
     original_version = MediaVersionModel(
         file_id=media_file.id,
-        version="original",
+        version_type="original",
         url=f"{config.minio_url}/{config.bucket_name}/original-{new_file_name}",  #change
         minio_key=f"original-{new_file_name}",
     )
 
 
-    session.add(media_file)
-    await session.commit()
-    await session.refresh(media_file)
 
     session.add(original_version)
     await session.commit()
