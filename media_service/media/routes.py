@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException,UploadFile,Depends
 from fastapi.responses import StreamingResponse
 
-from core.auth import current_user, get_token_from_header
+from core.auth import current_user, get_token_from_header,encode_token
 from core import MediaFileModel,MediaVersionModel,ProcessingTaskModel
 from .schemas import JWTSchema,UploadResponseSchema,MediaFileSchema,UserSchema
 from core import config
@@ -158,10 +158,13 @@ async def upload(
 
     media_processing.delay(minio_key, media_file.id, file.content_type, new_file_name)
 
+    service_token = encode_token({"sub": "media_service"})
+
     async with aiohttp.ClientSession() as http_session:
         
         await http_session.patch(
-            config.user_service_url + f"/users/{length}/?user_id={user.id}",)
+            config.user_service_url + f"/users/{length}/?user_id={user.id}",
+            headers={"Authorization": f"Bearer {service_token}"})
     
     return UploadResponseSchema.model_validate(processing_task)
 

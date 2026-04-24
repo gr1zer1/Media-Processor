@@ -33,7 +33,7 @@ app.include_router(users_router, prefix="/users")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8000"],
+    allow_origins=["http://localhost:3000", "http://localhost:8002"],
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=True,

@@ -337,7 +337,25 @@ async def update_user_quota(
     quote: int,
     session: SessionDep,
     user_id:int|None = Query(default=None),
+    authorization: str | None = Header(default=None),
 ) -> UserResponseSchema:
+    
+    schema,_,token = authorization.partition(" ")
+    if schema.lower() != "bearer" or not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization scheme",
+        )
+    payload = decode_token(token)
+    sub = payload.get("sub")
+    if str(sub) != "media_service":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token subject",
+        )
+    
+
+
     stmt = (
         update(UserModel)
         .where(UserModel.id == user_id)

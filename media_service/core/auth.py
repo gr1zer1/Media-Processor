@@ -5,6 +5,9 @@ from fastapi import Header
 from media.schemas import JWTSchema
 
 
+def encode_token(payload: dict) -> str:
+    return jwt.encode(payload, config.jwt_secret_key, algorithm=config.jwt_algorithm)
+
 def decode_token(token: str) -> JWTSchema:
     try:
         payload = jwt.decode(
