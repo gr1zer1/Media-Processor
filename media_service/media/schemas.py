@@ -16,6 +16,9 @@ class UploadResponseSchema(BaseModel):
     started_at:datetime | None = None
     finished_at:datetime | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+
+
 
 class MediaFileSchema(BaseModel):
     id:int

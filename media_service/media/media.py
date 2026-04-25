@@ -5,7 +5,7 @@ import os
 import subprocess
 import tempfile
 import uuid
-import secrets
+from core.utils import make_url
 
 from celery import Celery
 from PIL import Image
@@ -71,8 +71,6 @@ def upload_to_minio(object_name: str, data: BinaryIO, length: int):
     )
 
 
-def make_url() -> str:
-    return secrets.token_urlsafe(8)
 
 
 def download_to_tempfile(minio_key: str) -> str:

@@ -6,6 +6,7 @@ from core import MediaFileModel,MediaVersionModel,ProcessingTaskModel
 from .schemas import IdsRequest, JWTSchema,UploadResponseSchema,MediaFileSchema,UserSchema
 from core import config
 from core.db import db_helper
+from core.utils import make_url
 
 from typing import Annotated
 
@@ -148,7 +149,10 @@ async def check_status(
     user:JWTSchema = Depends(current_user),
     ) -> UploadResponseSchema:
 
-    stmt = select(ProcessingTaskModel).where(ProcessingTaskModel.id == task_id)
+    stmt = (
+        select(ProcessingTaskModel)
+        .where(ProcessingTaskModel.id == task_id)
+        .options(selectinload(ProcessingTaskModel.file)))
     result = await session.execute(stmt)
     task = result.scalar_one_or_none()
 
@@ -196,7 +200,7 @@ async def get_file_by_url(
     if data.file.user_id != user.sub and (data.file.user_access_ids is None or user.sub not in data.file.user_access_ids):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return get_stream_file(data.minio_key)
+    return await get_stream_file(data.minio_key)
 
 
 @router.get("/files/{file_id}")
