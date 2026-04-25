@@ -12,7 +12,7 @@ class MediaFileModel(Base, TimestampMixin):
     filetype: Mapped[str] = mapped_column(String(50))
     filesize: Mapped[int] = mapped_column(Integer)
     user_id: Mapped[int] = mapped_column(Integer)
-    user_access_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer))
+    user_access_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer),nullable=True,default=None)
 
     media_versions: Mapped[list["MediaVersionModel"]] = relationship(
         "MediaVersionModel", back_populates="file"

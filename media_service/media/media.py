@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import uuid
+import secrets
 
 from celery import Celery
 from PIL import Image
@@ -70,8 +71,8 @@ def upload_to_minio(object_name: str, data: BinaryIO, length: int):
     )
 
 
-def make_url(object_name: str) -> str:
-    return f"{config.minio_url}/{config.bucket_name}/{object_name}"
+def make_url() -> str:
+    return secrets.token_urlsafe(8)
 
 
 def download_to_tempfile(minio_key: str) -> str:
@@ -108,7 +109,7 @@ def process_image(src_path: str, media_file_id: int, new_file_name: str) -> list
     versions.append(MediaVersionModel(
         file_id=media_file_id,
         version_type="thumbnail",
-        url=make_url(thumbnail_object),
+        url=make_url(),
         minio_key=thumbnail_object,
     ))
 
@@ -128,7 +129,7 @@ def process_image(src_path: str, media_file_id: int, new_file_name: str) -> list
     versions.append(MediaVersionModel(
         file_id=media_file_id,
         version_type="medium",
-        url=make_url(medium_object),
+        url=make_url(),
         minio_key=medium_object,
     ))
 
@@ -163,7 +164,7 @@ def process_video(src_path: str, media_file_id: int, new_file_name: str, content
         versions.append(MediaVersionModel(
             file_id=media_file_id,
             version_type="converted",
-            url=make_url(converted_object),
+            url=make_url(),
             minio_key=converted_object,
         ))
 
@@ -189,7 +190,7 @@ def process_video(src_path: str, media_file_id: int, new_file_name: str, content
             versions.append(MediaVersionModel(
                 file_id=media_file_id,
                 version_type="preview",
-                url=make_url(preview_object),
+                url=make_url(),
                 minio_key=preview_object,
             ))
         finally:

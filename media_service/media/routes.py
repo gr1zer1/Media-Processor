@@ -1,9 +1,9 @@
-from fastapi import APIRouter, HTTPException,UploadFile,Depends
+from fastapi import APIRouter, HTTPException,UploadFile,Depends,Body
 from fastapi.responses import StreamingResponse
 
 from core.auth import current_user, get_token_from_header,encode_token
 from core import MediaFileModel,MediaVersionModel,ProcessingTaskModel
-from .schemas import JWTSchema,UploadResponseSchema,MediaFileSchema,UserSchema
+from .schemas import IdsRequest, JWTSchema,UploadResponseSchema,MediaFileSchema,UserSchema
 from core import config
 from core.db import db_helper
 
@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 import uuid
 
-from .media import media_processing
+from .media import media_processing,make_url
 
 import aiohttp
 import asyncio
@@ -26,63 +26,11 @@ SessionDep = Annotated[AsyncSession, Depends(db_helper.get_session)]
 router = APIRouter()
 
 
-async def private_stream_file(
-        file_name:str,
-        version_type:str,
-        user:JWTSchema,
-        session:AsyncSession,
+async def get_stream_file(
+        minio_key:str
         ) -> StreamingResponse:
-    stmt = (select(MediaFileModel)
-            .where(MediaFileModel.original_filename == file_name)
-    )
-    result = await session.execute(stmt)
-    file = result.scalar_one_or_none()
-
-    if not file or file.user_id != user.sub:
-        return {"error": "File not found or access denied"}
     
-    file_stmt = (select(MediaVersionModel)
-                 .where(MediaVersionModel.file_id == file.id, MediaVersionModel.version_type == version_type)
-    )
-    file_result = await session.execute(file_stmt)
-    media_version = file_result.scalar_one_or_none()
-
-    if not media_version:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    response = db_helper.minio_client.get_object(config.bucket_name, media_version.minio_key)
-
-
-    return StreamingResponse(
-        response.stream(5 * 1024 * 1024),
-        media_type="application/octet-stream",
-        headers={
-            "Content-Disposition": 'attachment; filename="file.jpg"'
-        }
-    )
-
-
-async def public_stream_file(
-        file_name:str,
-        version_type:str,
-        session:AsyncSession,
-        ) -> StreamingResponse:
-    stmt = (select(MediaFileModel)
-            .where(MediaFileModel.original_filename == file_name)
-    )
-    result = await session.execute(stmt)
-    file = result.scalar_one_or_none()
-
-    
-    file_stmt = (select(MediaVersionModel)
-                 .where(MediaVersionModel.file_id == file.id,MediaVersionModel.version_type == version_type)
-    )
-    file_result = await session.execute(file_stmt)
-    media_version = file_result.scalar_one_or_none()
-
-    if not media_version:
-        raise HTTPException(status_code=404, detail="File not found")
-    response = db_helper.minio_client.get_object(config.bucket_name, media_version.minio_key)
+    response = db_helper.minio_client.get_object(config.bucket_name, minio_key)
 
 
     return StreamingResponse(
@@ -98,7 +46,8 @@ async def public_stream_file(
 async def upload(
     file: UploadFile,
     session:SessionDep,
-    user_token: str = Depends(get_token_from_header)
+    ids: IdsRequest | None = Body(default=None),
+    user_token: str = Depends(get_token_from_header),
     ):
     async with aiohttp.ClientSession() as http_session:
         async with http_session.get(config.user_service_url + "/users/by-jwt", headers={"Authorization": f"Bearer {user_token}"}) as resp:
@@ -120,14 +69,37 @@ async def upload(
 
     length = file.size
     
+    #private link
+    if ids is None:
 
+        media_file = MediaFileModel(
+            original_filename=file.filename,
+            filetype=file.content_type,
+            filesize=file.size,
+            user_id=user.id,
+            user_access_ids=None
+        )
 
-    media_file = MediaFileModel(
-        original_filename=file.filename,
-        filetype=file.content_type,
-        filesize=file.size,
-        user_id=user.id,
-    )
+    #public link without access control
+    elif len(ids.ids) == 0 or ids.ids == None:
+        media_file = MediaFileModel(
+            original_filename=file.filename,
+            filetype=file.content_type,
+            filesize=file.size,
+            user_id=user.id,
+            user_access_ids=[]
+        )
+    
+    #public link with access control
+    else:
+        media_file = MediaFileModel(
+            original_filename=file.filename,
+            filetype=file.content_type,
+            filesize=file.size,
+            user_id=user.id,
+            user_access_ids=ids.ids
+        )
+    
 
     session.add(media_file)
     await session.commit()
@@ -136,7 +108,7 @@ async def upload(
     original_version = MediaVersionModel(
         file_id=media_file.id,
         version_type="original",
-        url=f"{config.minio_url}/{config.bucket_name}/original-{new_file_name}",  #change
+        url=make_url(), 
         minio_key=f"original-{new_file_name}",
     )
 
@@ -202,24 +174,29 @@ async def list_files(
 
     return files
 
-@router.get("/files/private/{file_name}",response_model=StreamingResponse)
-async def get_private_file(
-    file_name:str,
-    version_type:str,
-    session:SessionDep,
-    user:JWTSchema = Depends(current_user),
-    ) -> StreamingResponse:
-    return await private_stream_file(file_name, version_type, user, session)
-
 """TODO: Fix bag with access control for public files. Currently anyone can access any file if they know the name.
 We need to add some kind of token or signature to the URL to ensure that only authorized users can access the file."""
-@router.get("/files/public/{file_name}",response_model=StreamingResponse)
-async def get_public_file(
-    file_name:str,
-    version_type:str,
+
+@router.get("/files/get/{url}")
+async def get_file_by_url(
+    url:str,
     session:SessionDep,
-    ) -> StreamingResponse:
-    return await public_stream_file(file_name, version_type, session)
+    user:JWTSchema = Depends(current_user),
+    ) -> dict:
+    stmt = (select(MediaVersionModel)
+            .where(MediaVersionModel.url == url)
+            .options(selectinload(MediaVersionModel.file))
+    )
+    res = await session.execute(stmt)
+    data = res.scalar_one_or_none()
+
+    if not data:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    if data.file.user_id != user.sub and (data.file.user_access_ids is None or user.sub not in data.file.user_access_ids):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return get_stream_file(data.minio_key)
 
 
 @router.get("/files/{file_id}")

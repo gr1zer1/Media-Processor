@@ -23,6 +23,9 @@ class MediaFileSchema(BaseModel):
     filetype:str
     filesize:int
     user_id:int
+    user_access_ids:list[int] | None = None
+    updated_at:datetime
+    created_at:datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,4 +40,8 @@ class UserSchema(BaseModel):
     quota_limit: int
     created_at: datetime
     updated_at: datetime
+
+
+class IdsRequest(BaseModel):
+    ids: list[int] | None = Field(default=None)
     
