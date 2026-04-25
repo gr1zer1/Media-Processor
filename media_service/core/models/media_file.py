@@ -1,5 +1,5 @@
 from .base import Base, TimestampMixin
-from sqlalchemy import String, Integer, ForeignKey
+from sqlalchemy import String, Integer, ForeignKey,ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import TYPE_CHECKING
 
@@ -12,6 +12,7 @@ class MediaFileModel(Base, TimestampMixin):
     filetype: Mapped[str] = mapped_column(String(50))
     filesize: Mapped[int] = mapped_column(Integer)
     user_id: Mapped[int] = mapped_column(Integer)
+    user_access_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer))
 
     media_versions: Mapped[list["MediaVersionModel"]] = relationship(
         "MediaVersionModel", back_populates="file"

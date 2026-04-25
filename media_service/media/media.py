@@ -152,7 +152,7 @@ def process_video(src_path: str, media_file_id: int, new_file_name: str, content
                 "-c:a", "aac",
                 "-y",
                 converted_path,
-            ], capture_output=True, timeout=300)
+            ], capture_output=True, timeout=None)
 
             if result.returncode != 0:
                 raise Exception(f"ffmpeg conversion error: {result.stderr.decode()}")
