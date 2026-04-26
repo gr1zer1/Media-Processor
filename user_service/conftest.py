@@ -78,7 +78,6 @@ from core import Base, UserModel  # noqa: E402
 from core.db import db_helper  # noqa: E402
 from main import app  # noqa: E402
 
-
 TEST_DATABASE_NAME = "media_processor_test"
 TEST_DATABASE_URL = (
     f"postgresql+asyncpg://user:password@localhost:5432/{TEST_DATABASE_NAME}"
@@ -95,9 +94,7 @@ async def test_database():
 
     async with admin_engine.begin() as conn:
         database_exists = await conn.scalar(
-            text(
-                "SELECT 1 FROM pg_database WHERE datname = :database_name"
-            ),
+            text("SELECT 1 FROM pg_database WHERE datname = :database_name"),
             {"database_name": TEST_DATABASE_NAME},
         )
         if not database_exists:
