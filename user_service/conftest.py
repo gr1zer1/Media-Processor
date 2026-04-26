@@ -1,12 +1,15 @@
 import sys
 import types
 import os
+from pathlib import Path
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+from dotenv import dotenv_values
 
 
 class FakeRedisClient:
@@ -80,28 +83,42 @@ from core import Base, UserModel  # noqa: E402
 from core.db import db_helper  # noqa: E402
 from main import app  # noqa: E402
 
-DEFAULT_TEST_DATABASE_URL = (
-    "postgresql+asyncpg://user:password@localhost:5432/media_processor_test"
+PROJECT_ENV = dotenv_values(Path(__file__).resolve().parent.parent / ".env")
+DEFAULT_TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}_test".format(
+        user=os.getenv("POSTGRES_USER", PROJECT_ENV.get("POSTGRES_USER", "user")),
+        password=os.getenv(
+            "POSTGRES_PASSWORD", PROJECT_ENV.get("POSTGRES_PASSWORD", "password")
+        ),
+        host=os.getenv("TEST_DATABASE_HOST", "localhost"),
+        port=os.getenv("TEST_DATABASE_PORT", "5432"),
+        database=os.getenv("POSTGRES_DB", PROJECT_ENV.get("POSTGRES_DB", "media_processor")),
+    ),
 )
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
-TEST_DATABASE_NAME = make_url(TEST_DATABASE_URL).database
-ADMIN_DATABASE_URL = str(make_url(TEST_DATABASE_URL).set(database="postgres"))
 
 
 @pytest_asyncio.fixture(scope="session")
 async def test_database():
+    if make_url(TEST_DATABASE_URL).get_backend_name() != "postgresql":
+        yield TEST_DATABASE_URL
+        return
+
+    test_database_name = make_url(TEST_DATABASE_URL).database
+    admin_database_url = make_url(TEST_DATABASE_URL).set(database="postgres")
     admin_engine = create_async_engine(
-        ADMIN_DATABASE_URL,
+        admin_database_url,
         isolation_level="AUTOCOMMIT",
     )
 
     async with admin_engine.begin() as conn:
         database_exists = await conn.scalar(
             text("SELECT 1 FROM pg_database WHERE datname = :database_name"),
-            {"database_name": TEST_DATABASE_NAME},
+            {"database_name": test_database_name},
         )
         if not database_exists:
-            await conn.execute(text(f'CREATE DATABASE "{TEST_DATABASE_NAME}"'))
+            await conn.execute(text(f'CREATE DATABASE "{test_database_name}"'))
 
     try:
         yield TEST_DATABASE_URL
@@ -116,15 +133,22 @@ async def test_database():
                     AND pid <> pg_backend_pid()
                     """
                 ),
-                {"database_name": TEST_DATABASE_NAME},
+                {"database_name": test_database_name},
             )
-            await conn.execute(text(f'DROP DATABASE IF EXISTS "{TEST_DATABASE_NAME}"'))
+            await conn.execute(text(f'DROP DATABASE IF EXISTS "{test_database_name}"'))
         await admin_engine.dispose()
 
 
 @pytest_asyncio.fixture
 async def setup_db(test_database):
-    engine = create_async_engine(test_database)
+    engine_kwargs = {}
+    if make_url(test_database).get_backend_name() == "sqlite":
+        engine_kwargs = {
+            "poolclass": StaticPool,
+            "connect_args": {"check_same_thread": False},
+        }
+
+    engine = create_async_engine(test_database, **engine_kwargs)
     session_factory = async_sessionmaker(
         bind=engine,
         autoflush=False,

@@ -139,7 +139,7 @@ services:
       retries: 3
       start_period: 10s
   celery_worker:
-    build: ./user_service/.
+    build: ./media_service/.
     command: celery -A app.celery_app worker --loglevel=info
     env_file: .env
     depends_on:

@@ -26,7 +26,9 @@ jobs:
           MINIO_SECRET_KEY=password
           USER_SERVICE_URL=http://user_service:8001
           EOF
+      - name: Reset compose state
+        run: docker compose down -v --remove-orphans || true
       - name: Start database
         run: docker compose up -d db
       - name: Run tests
-        run: docker compose run --rm -e TEST_DATABASE_URL=postgresql+asyncpg://user:password@db:5432/media_processor_test api pytest -v
+        run: docker compose run --rm --build -e TEST_DATABASE_URL=postgresql+asyncpg://user:password@db:5432/media_processor_test api pytest -v
