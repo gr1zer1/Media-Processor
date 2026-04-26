@@ -1,197 +1,324 @@
-# 🔐 FastAPI Auth Service
+# 📦 Media Processing Service
 
-A production-ready authentication microservice built with **FastAPI** and **JWT**. Designed to be reusable — plug it into any project without rewriting auth from scratch.
+Сервис загрузки и фоновой обработки медиафайлов. Пользователи загружают изображения и видео, сервис обрабатывает их в фоне через Celery и возвращает ссылки на все сгенерированные версии.
 
-## Features
+**Стек:** Python · FastAPI · Celery · Redis · PostgreSQL · MinIO · Docker Compose
 
-- Registration and login with JWT
-- Access token + refresh token rotation
-- Refresh tokens stored in `httponly` cookies
-- Token blacklist via Redis (logout, password change)
-- `token_version` — changing password invalidates all other sessions
-- Role-based access control (RBAC) via `require_role()`
-- Rate limiting on all public endpoints
-- PostgreSQL + async SQLAlchemy
-- Fully containerized with Docker Compose
+---
 
-## Tech Stack
+## Содержание
 
-| Layer | Technology |
-|---|---|
-| Framework | FastAPI |
-| Auth | JWT (python-jose) |
-| Password hashing | bcrypt (passlib) |
-| Database | PostgreSQL 16 |
-| ORM | SQLAlchemy (async) |
-| Cache / Blacklist | Redis 7 |
-| Rate limiting | fastapi-limiter |
-| Containerization | Docker, Docker Compose |
+- [Возможности](#возможности)
+- [Архитектура](#архитектура)
+- [Быстрый старт](#быстрый-старт)
+- [Переменные окружения](#переменные-окружения)
+- [API](#api)
+- [Обработка файлов](#обработка-файлов)
+- [Модели БД](#модели-бд)
+- [Запуск тестов](#запуск-тестов)
+- [Структура проекта](#структура-проекта)
 
-## Endpoints
+---
 
-| Method | Path | Description | Auth |
-|---|---|---|---|
-| `POST` | `/register` | Create a new user | — |
-| `POST` | `/login` | Get access + refresh tokens | — |
-| `POST` | `/refresh` | Rotate refresh token | cookie |
-| `POST` | `/logout` | Invalidate refresh token | cookie |
-| `GET` | `/me` | Get current user info | Bearer |
-| `POST` | `/change-password` | Change password, invalidate all sessions | Bearer |
-| `GET` | `/` | List all users | Bearer (admin) |
-| `GET` | `/{user_id}` | Get user by ID | Bearer (admin) |
-| `GET` | `/by-email` | Get user by email | Bearer (admin) |
+## Возможности
 
-## Token Flow
+- Загрузка изображений (jpg, png, gif) и видео (mp4, mov)
+- Фоновая обработка через Celery + Redis
+- Автоматическая генерация версий файла (thumbnail, medium, preview)
+- Хранение файлов в MinIO (self-hosted S3)
+- JWT-авторизация через внешний auth-сервис
+- Квота хранилища на пользователя
+- Контроль доступа к файлам (приватные / публичные / по списку ID)
+- Статус обработки в реальном времени через polling
+
+---
+
+## Архитектура
 
 ```
-POST /login
-  → access_token (JSON body, 15 min)
-  → refresh_token (httponly cookie, 30 days)
+Client
+  │
+  ▼
+FastAPI (media_service)
+  │         │
+  │         └──► MinIO (хранение файлов)
+  │
+  ├──► PostgreSQL (файлы, версии, задачи)
+  │
+  └──► Redis ──► Celery Worker
+                    │
+                    ├──► Pillow (обработка изображений)
+                    ├──► ffmpeg (обработка видео)
+                    └──► MinIO (сохранение версий)
 
-POST /refresh
-  → new access_token
-  → new refresh_token cookie
-  → old refresh_token blacklisted in Redis
-
-POST /logout
-  → refresh_token blacklisted in Redis
-  → cookie cleared
-
-POST /change-password
-  → token_version incremented (all other sessions invalidated)
-  → new access_token + refresh_token issued for current session
+Auth Service (отдельный микросервис, JWT)
 ```
 
-## Getting Started
+**Флоу загрузки:**
+1. `POST /upload` — файл сохраняется в MinIO, создаётся запись в БД, задача уходит в Celery
+2. Celery-воркер обрабатывает файл и создаёт версии
+3. `GET /status/{task_id}` — клиент полит статус (`pending → processing → done / failed`)
+4. `GET /files/{file_id}` — возвращает все версии с ссылками на скачивание
 
-### 1. Clone the repo
+---
+
+## Быстрый старт
+
+### Требования
+
+- Docker & Docker Compose
+- Запущенный auth-сервис (переменная `USER_SERVICE_URL`)
+
+### Запуск
 
 ```bash
-git clone https://github.com/your-username/auth-service.git
-cd auth-service
-```
+git clone https://github.com/your-username/media-service.git
+cd media-service
 
-### 2. Configure environment variables
-
-```bash
 cp .env.example .env
+# Заполните переменные окружения в .env
+
+docker compose up --build
 ```
 
-Edit `.env`:
+Сервис поднимется на `http://localhost:8000`.  
+Документация API: `http://localhost:8000/docs`
+
+### Применение миграций
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+---
+
+## Переменные окружения
+
+Создайте `.env` на основе `.env.example`:
 
 ```env
-POSTGRES_USER=user
-POSTGRES_PASSWORD=password
-POSTGRES_DB=auth_service
-DATABASE_URL=postgresql+asyncpg://user:password@db:5432/auth_service
+# База данных
+DATABASE_URL=postgresql+asyncpg://user:password@db:5432/media_db
 
-JWT_SECRET_KEY=your-super-secret-key
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=15
-REFRESH_TOKEN_EXPIRE_DAYS=30
-
+# Redis / Celery
 REDIS_URL=redis://redis:6379
+
+# MinIO
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_BUCKET_NAME=media
+
+# Auth-сервис
+USER_SERVICE_URL=http://auth-service:8001
+
+# JWT
+JWT_SECRET=your-secret-key
+JWT_ALGORITHM=HS256
 ```
 
-### 3. Run with Docker Compose
+---
+
+## API
+
+### Авторизация
+
+Все защищённые эндпоинты требуют заголовок:
+```
+Authorization: Bearer <access_token>
+```
+
+Токен выдаётся auth-сервисом (`POST /login`).
+
+### Эндпоинты
+
+| Метод | Путь | Описание | Auth |
+|-------|------|----------|------|
+| `POST` | `/upload` | Загрузить файл, получить `task_id` | ✅ |
+| `GET` | `/status/{task_id}` | Статус обработки | ✅ |
+| `GET` | `/files` | Список файлов пользователя | ✅ |
+| `GET` | `/files/{file_id}` | Детали файла + ссылки на все версии | ✅ |
+| `DELETE` | `/files/{file_id}` | Удалить файл и все версии из MinIO | ✅ |
+| `GET` | `/files/{file_id}/download/{version}` | Скачать конкретную версию | ✅ |
+| `GET` | `/health` | Healthcheck | — |
+
+### Примеры запросов
+
+**Загрузка файла:**
+```bash
+curl -X POST http://localhost:8000/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@photo.jpg"
+```
+
+Ответ:
+```json
+{
+  "id": 1,
+  "file_id": 42,
+  "status": "pending",
+  "started_at": "2024-01-15T10:00:00Z",
+  "finished_at": null,
+  "error_message": null
+}
+```
+
+**Загрузка с контролем доступа:**
+```bash
+# Публичный файл (доступен всем)
+curl -X POST http://localhost:8000/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@photo.jpg" \
+  -F 'ids={"ids": []}'
+
+# Только для пользователей с id 5 и 10
+curl -X POST http://localhost:8000/upload \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@photo.jpg" \
+  -F 'ids={"ids": [5, 10]}'
+```
+
+**Проверка статуса:**
+```bash
+curl http://localhost:8000/status/1 \
+  -H "Authorization: Bearer <token>"
+```
+
+```json
+{
+  "id": 1,
+  "file_id": 42,
+  "status": "done",
+  "started_at": "2024-01-15T10:00:00Z",
+  "finished_at": "2024-01-15T10:00:05Z",
+  "error_message": null
+}
+```
+
+---
+
+## Обработка файлов
+
+### Изображения (jpg · png · gif)
+
+| Версия | Описание |
+|--------|----------|
+| `original` | Оригинал, сохраняется в MinIO без изменений |
+| `medium` | Ресайз до 800px по ширине (Pillow, LANCZOS) |
+| `thumbnail` | Уменьшение до 128×128px (Pillow) |
+
+### Видео (mp4 · mov)
+
+| Версия | Описание |
+|--------|----------|
+| `original` | Оригинал, сохраняется в MinIO без изменений |
+| `converted` | Перекодирование в mp4 (H.264 + AAC) через ffmpeg |
+| `preview` | Первый кадр на 1-й секунде, 128×128px (ffmpeg) |
+
+### Статусы задачи
+
+```
+pending → processing → done
+                     ↘ failed (error_message заполнен)
+```
+
+---
+
+## Модели БД
+
+```
+MediaFile
+├── id, user_id, original_filename
+├── filetype, filesize
+├── user_access_ids  (null = приватный, [] = публичный, [...] = ACL)
+└── created_at, updated_at
+
+MediaVersion
+├── id, file_id (FK)
+├── version_type  (original / medium / thumbnail / converted / preview)
+├── minio_key
+└── url
+
+ProcessingTask
+├── id, file_id (FK)
+├── status, error_message
+└── started_at, finished_at
+```
+
+Миграции управляются через **Alembic**:
+```bash
+# Создать новую миграцию
+alembic revision --autogenerate -m "description"
+
+# Применить
+alembic upgrade head
+
+# Откатить
+alembic downgrade -1
+```
+
+---
+
+## Запуск тестов
 
 ```bash
-docker-compose up --build
+docker compose exec api pytest -v
 ```
 
-The service will be available at `http://localhost:8001`.
-
-Interactive API docs: `http://localhost:8001/docs`
-
-## Running Tests
-
-Tests are located in the `user_service/tests/` directory and use **pytest**.
-
-### Run all tests
+Покрытие: `/upload`, `/status`, `/files`, `/download`.
 
 ```bash
-pytest user_service/
+# С отчётом о покрытии
+docker compose exec api pytest --cov=. --cov-report=term-missing
 ```
 
-### Run tests with verbose output
+---
 
-```bash
-pytest user_service/ -v
-```
-
-### Run specific test file
-
-```bash
-pytest user_service/tests/test_users.py -v
-```
-
-### Run tests with coverage
-
-```bash
-pytest user_service/ --cov=user_service --cov-report=html
-```
-
-## Project Structure
+## Структура проекта
 
 ```
-auth-service/
+media-service/
+├── api/
+│   ├── router.py          # FastAPI эндпоинты
+│   ├── schemas.py         # Pydantic-схемы
+│   └── media.py           # Celery-таски, обработка файлов
 ├── core/
-│   ├── auth.py          # JWT creation, decoding, require_role()
-│   ├── config.py        # Settings from .env
-│   ├── db.py            # SQLAlchemy + Redis setup
-│   ├── models.py        # UserModel
-│   └── utility.py       # hash_password, verify_password
-├── users/
-│   ├── router.py        # All endpoints
-│   └── schemas.py       # Pydantic schemas
-├── .env.example
-├── Dockerfile
+│   ├── models/
+│   │   ├── base.py
+│   │   ├── media_file.py
+│   │   ├── media_version.py
+│   │   └── processing_task.py
+│   ├── auth.py            # JWT-утилиты
+│   ├── config.py
+│   └── db.py              # SQLAlchemy + MinIO клиент
+├── migrations/            # Alembic
+├── tests/
 ├── docker-compose.yml
-└── requirements.txt
+├── Dockerfile
+├── .env.example
+└── README.md
 ```
 
-## User Model
+---
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | int | Primary key |
-| `email` | str | Unique, indexed |
-| `password` | str | bcrypt hashed |
-| `role` | str | `user` by default |
-| `token_version` | int | Increments on password change |
-| `created_at` | datetime | Auto timestamp |
-| `updated_at` | datetime | Auto timestamp |
+## CI/CD
 
-## RBAC
+GitHub Actions запускает тесты на каждый push в `main`:
 
-Endpoints are protected with `require_role()`:
-
-```python
-# single role
-_user: UserModel = Depends(require_role("admin"))
-
-# multiple roles
-current_user: UserModel = Depends(require_role("user", "admin"))
+```yaml
+# .github/workflows/ci.yml
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: docker compose run --rm api pytest -v
 ```
 
-New users are always registered with `role="user"`. Roles can only be changed directly in the database by an admin.
+---
 
-## Using in Other Projects
-
-Run the service as a standalone container and call it over HTTP from any other service:
-
-```python
-import httpx
-
-# verify token and get current user
-response = httpx.get(
-    "http://auth-service:8001/me",
-    headers={"Authorization": f"Bearer {access_token}"}
-)
-user = response.json()
-# {"id": 1, "email": "user@example.com", "role": "user"}
-```
-
-## License
+## Лицензия
 
 MIT
