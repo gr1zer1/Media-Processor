@@ -1,9 +1,11 @@
 import sys
 import types
+import os
 
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
@@ -78,11 +80,12 @@ from core import Base, UserModel  # noqa: E402
 from core.db import db_helper  # noqa: E402
 from main import app  # noqa: E402
 
-TEST_DATABASE_NAME = "media_processor_test"
-TEST_DATABASE_URL = (
-    f"postgresql+asyncpg://user:password@localhost:5432/{TEST_DATABASE_NAME}"
+DEFAULT_TEST_DATABASE_URL = (
+    "postgresql+asyncpg://user:password@localhost:5432/media_processor_test"
 )
-ADMIN_DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5432/postgres"
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
+TEST_DATABASE_NAME = make_url(TEST_DATABASE_URL).database
+ADMIN_DATABASE_URL = str(make_url(TEST_DATABASE_URL).set(database="postgres"))
 
 
 @pytest_asyncio.fixture(scope="session")
