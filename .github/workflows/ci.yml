@@ -29,6 +29,4 @@ jobs:
       - name: Start database
         run: docker compose up -d db
       - name: Run tests
-        env:
-          TEST_DATABASE_URL: postgresql+asyncpg://user:password@db:5432/media_processor_test
-        run: docker compose run --rm api pytest -v
+        run: docker compose run --rm -e TEST_DATABASE_URL=postgresql+asyncpg://user:password@db:5432/media_processor_test api pytest -v
